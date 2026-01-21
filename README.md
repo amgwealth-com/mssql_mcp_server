@@ -1,11 +1,11 @@
 # Microsoft SQL Server MCP Server
 
-[![PyPI](https://img.shields.io/pypi/v/microsoft_sql_server_mcp)](https://pypi.org/project/microsoft_sql_server_mcp/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- [![PyPI](https://img.shields.io/pypi/v/mssql_mcp_server)](https://pypi.org/project/mssql_mcp_server/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) -->
 
-<a href="https://glama.ai/mcp/servers/29cpe19k30">
+<!-- <a href="https://glama.ai/mcp/servers/29cpe19k30">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/29cpe19k30/badge" alt="Microsoft SQL Server MCP server" />
-</a>
+</a> -->
 
 A Model Context Protocol (MCP) server for secure SQL Server database access through Claude Desktop.
 
@@ -13,13 +13,15 @@ A Model Context Protocol (MCP) server for secure SQL Server database access thro
 
 - 🔍 List database tables
 - 📊 Execute SQL queries (SELECT, INSERT, UPDATE, DELETE)
-- 🔐 Multiple authentication methods (SQL, Windows, Azure AD)
+- 🔐 Multiple authentication methods
+  - SQL
+  - Entra ID (TODO)
 - 🏢 LocalDB and Azure SQL support
 - 🔌 Custom port configuration
 
 ## Quick Start
 
-### Install with Claude Desktop
+### Install with Claude Desktop / Cursor
 
 Add to your `claude_desktop_config.json`:
 
@@ -28,7 +30,7 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "mssql": {
       "command": "uvx",
-      "args": ["microsoft_sql_server_mcp"],
+      "args": ["--from", "git+https://github.com/amgwealth-com/mssql_mcp_server.git", "mssql_mcp_server"],
       "env": {
         "MSSQL_SERVER": "localhost",
         "MSSQL_DATABASE": "your_database",
@@ -50,21 +52,9 @@ MSSQL_USER=your_username        # Required for SQL auth
 MSSQL_PASSWORD=your_password    # Required for SQL auth
 ```
 
-### Windows Authentication
-```bash
-MSSQL_SERVER=localhost
-MSSQL_DATABASE=your_database
-MSSQL_WINDOWS_AUTH=true         # Use Windows credentials
-```
-
 ### Azure SQL Database
-```bash
-MSSQL_SERVER=your-server.database.windows.net
-MSSQL_DATABASE=your_database
-MSSQL_USER=your_username
-MSSQL_PASSWORD=your_password
-# Encryption is automatic for Azure
-```
+
+TBD
 
 ### Optional Settings
 ```bash
@@ -72,29 +62,10 @@ MSSQL_PORT=1433                 # Custom port (default: 1433)
 MSSQL_ENCRYPT=true              # Force encryption
 ```
 
-## Alternative Installation Methods
-
-### Using pip
-```bash
-pip install microsoft_sql_server_mcp
-```
-
-Then in `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "mssql": {
-      "command": "python",
-      "args": ["-m", "mssql_mcp_server"],
-      "env": { ... }
-    }
-  }
-}
-```
 
 ### Development
 ```bash
-git clone https://github.com/RichardHan/mssql_mcp_server.git
+git clone https://github.com/amgwealth-com/mssql_mcp_server.git
 cd mssql_mcp_server
 pip install -e .
 ```
