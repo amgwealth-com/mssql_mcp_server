@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import re
-import pymssql
+import pyodbc
 from mcp.server import Server
 from mcp.types import Resource, Tool, TextContent
 from pydantic import AnyUrl
@@ -30,72 +30,86 @@ def validate_table_name(table_name: str) -> str:
         return f"[{table_name}]"
 
 def get_db_config():
-    """Get database configuration from environment variables."""
+    """Get database configuration from environment variables and return connection string."""
     # Basic configuration
     server = os.getenv("MSSQL_SERVER", "localhost")
     logger.info(f"MSSQL_SERVER environment variable: {os.getenv('MSSQL_SERVER', 'NOT SET')}")
     logger.info(f"Using server: {server}")
     
+    database = os.getenv("MSSQL_DATABASE")
+    user = os.getenv("MSSQL_USER")
+    password = os.getenv("MSSQL_PASSWORD")
+    port = os.getenv("MSSQL_PORT", "1433")
+    
     # Handle LocalDB connections (Issue #6)
     # LocalDB format: (localdb)\instancename
     if server.startswith("(localdb)\\"):
-        # For LocalDB, pymssql needs special formatting
-        # Convert (localdb)\MSSQLLocalDB to localhost\MSSQLLocalDB with dynamic port
         instance_name = server.replace("(localdb)\\", "")
-        server = f".\\{instance_name}"
-        logger.info(f"Detected LocalDB connection, converted to: {server}")
+        server = f"(localdb)\\{instance_name}"
+        logger.info(f"Detected LocalDB connection: {server}")
     
-    config = {
-        "server": server,
-        "user": os.getenv("MSSQL_USER"),
-        "password": os.getenv("MSSQL_PASSWORD"),
-        "database": os.getenv("MSSQL_DATABASE"),
-        "port": os.getenv("MSSQL_PORT", "1433"),  # Default MSSQL port
-    }    
-    # Port support (Issue #8)
-    port = os.getenv("MSSQL_PORT")
-    if port:
-        try:
-            config["port"] = int(port)
-        except ValueError:
-            logger.warning(f"Invalid MSSQL_PORT value: {port}. Using default port.")
-    
-    # Encryption settings for Azure SQL (Issue #11)
-    # Check if we're connecting to Azure SQL
-    if config["server"] and ".database.windows.net" in config["server"]:
-        config["tds_version"] = "7.4"  # Required for Azure SQL
-        # Azure SQL requires encryption - use connection string format for pymssql 2.3+
-        # This improves upon TDS-only approach by being more explicit
-        if os.getenv("MSSQL_ENCRYPT", "true").lower() == "true":
-            config["server"] += ";Encrypt=yes;TrustServerCertificate=no"
-    else:
-        # For non-Azure connections, respect the MSSQL_ENCRYPT setting
-        # Use connection string format in addition to TDS version for better compatibility
-        encrypt_str = os.getenv("MSSQL_ENCRYPT", "false")
-        if encrypt_str.lower() == "true":
-            config["tds_version"] = "7.4"  # Keep existing TDS approach
-            config["server"] += ";Encrypt=yes;TrustServerCertificate=yes"  # Add explicit setting
-            
     # Windows Authentication support (Issue #7)
     use_windows_auth = os.getenv("MSSQL_WINDOWS_AUTH", "false").lower() == "true"
     
+    # Get available ODBC drivers
+    drivers = [d for d in pyodbc.drivers() if 'SQL Server' in d]
+    if not drivers:
+        raise RuntimeError("No SQL Server ODBC driver found. Please install ODBC Driver for SQL Server.")
+    
+    driver = drivers[0]  # Use the first available driver
+    logger.info(f"Using ODBC driver: {driver}")
+    
+    # Build connection string
+    conn_parts = [f"DRIVER={{{driver}}}"]
+    
+    # Add server and port
+    if port and port != "1433" and not server.startswith("(localdb)"):
+        conn_parts.append(f"SERVER={server},{port}")
+    else:
+        conn_parts.append(f"SERVER={server}")
+    
+    if not database:
+        logger.error("MSSQL_DATABASE is required")
+        raise ValueError("Missing required database configuration")
+    conn_parts.append(f"DATABASE={database}")
+    
     if use_windows_auth:
-        # For Windows authentication, user and password are not required
-        if not config["database"]:
-            logger.error("MSSQL_DATABASE is required")
-            raise ValueError("Missing required database configuration")
-        # Remove user and password for Windows auth
-        config.pop("user", None)
-        config.pop("password", None)
+        # For Windows authentication
+        conn_parts.append("Trusted_Connection=yes")
         logger.info("Using Windows Authentication")
     else:
         # SQL Authentication - user and password are required
-        if not all([config["user"], config["password"], config["database"]]):
+        if not user or not password:
             logger.error("Missing required database configuration. Please check environment variables:")
-            logger.error("MSSQL_USER, MSSQL_PASSWORD, and MSSQL_DATABASE are required")
+            logger.error("MSSQL_USER and MSSQL_PASSWORD are required for SQL Authentication")
             raise ValueError("Missing required database configuration")
+        conn_parts.append(f"UID={user}")
+        conn_parts.append(f"PWD={password}")
     
-    return config
+    # Encryption settings for Azure SQL (Issue #11)
+    if ".database.windows.net" in server:
+        # Azure SQL requires encryption
+        encrypt = os.getenv("MSSQL_ENCRYPT", "true").lower() == "true"
+        if encrypt:
+            conn_parts.append("Encrypt=yes")
+            conn_parts.append("TrustServerCertificate=no")
+    else:
+        # For non-Azure connections, respect the MSSQL_ENCRYPT setting
+        encrypt_str = os.getenv("MSSQL_ENCRYPT", "false")
+        if encrypt_str.lower() == "true":
+            conn_parts.append("Encrypt=yes")
+            conn_parts.append("TrustServerCertificate=yes")
+    
+    conn_string = ";".join(conn_parts)
+    
+    # Return both connection string and metadata for logging
+    return {
+        "conn_string": conn_string,
+        "server": server,
+        "database": database,
+        "user": user if not use_windows_auth else "Windows Auth",
+        "port": port
+    }
 
 def get_command():
     """Get the command to execute SQL queries."""
@@ -133,7 +147,7 @@ async def list_resources() -> list[Resource]:
     """List SQL Server tables as resources."""
     config = get_db_config()
     try:
-        conn = pymssql.connect(**config)
+        conn = pyodbc.connect(config["conn_string"])
         cursor = conn.cursor()
         # Query to get user tables from the current database
         cursor.execute("""
@@ -178,7 +192,7 @@ async def read_resource(uri: AnyUrl) -> str:
         # Validate table name to prevent SQL injection
         safe_table = validate_table_name(table)
         
-        conn = pymssql.connect(**config)
+        conn = pyodbc.connect(config["conn_string"])
         cursor = conn.cursor()
         # Use TOP 100 for MSSQL (equivalent to LIMIT in MySQL)
         cursor.execute(f"SELECT TOP 100 * FROM {safe_table}")
@@ -230,7 +244,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         raise ValueError("Query is required")
     
     try:
-        conn = pymssql.connect(**config)
+        conn = pyodbc.connect(config["conn_string"])
         cursor = conn.cursor()
         cursor.execute(query)
         
@@ -272,7 +286,7 @@ async def main():
     config = get_db_config()
     # Log connection info without exposing sensitive data
     server_info = config['server']
-    if 'port' in config:
+    if config.get('port') and config['port'] != "1433":
         server_info += f":{config['port']}"
     user_info = config.get('user', 'Windows Auth')
     logger.info(f"Database config: {server_info}/{config['database']} as {user_info}")
