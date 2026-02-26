@@ -32,7 +32,7 @@ class TestMCPProtocolIntegration:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -68,7 +68,7 @@ class TestMCPProtocolIntegration:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -112,7 +112,7 @@ class TestDatabaseIntegration:
             mock_conn.cursor.return_value = mock_cursor
             return mock_conn
         
-        with patch('pymssql.connect', side_effect=mock_connect):
+        with patch('pyodbc.connect', side_effect=mock_connect):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -133,7 +133,7 @@ class TestDatabaseIntegration:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.rowcount = 1
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -155,7 +155,7 @@ class TestDatabaseIntegration:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -184,7 +184,7 @@ class TestEdgeCases:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = []
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -205,7 +205,7 @@ class TestEdgeCases:
         mock_cursor.description = [('id',), ('name',), ('email',)]
         mock_cursor.fetchall.return_value = large_result
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -237,7 +237,7 @@ class TestEdgeCases:
             (None,),
         ]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',

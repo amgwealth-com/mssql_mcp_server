@@ -3,7 +3,7 @@ import pytest
 import asyncio
 from unittest.mock import Mock, patch, PropertyMock
 from mssql_mcp_server.server import app, get_db_config
-import pymssql
+import pyodbc
 
 
 class TestConnectionErrors:
@@ -12,8 +12,8 @@ class TestConnectionErrors:
     @pytest.mark.asyncio
     async def test_connection_timeout(self):
         """Test handling of connection timeouts."""
-        with patch('pymssql.connect') as mock_connect:
-            mock_connect.side_effect = pymssql.OperationalError("Connection timeout")
+        with patch('pyodbc.connect') as mock_connect:
+            mock_connect.side_effect = pyodbc.OperationalError("Connection timeout")
             
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
@@ -26,8 +26,8 @@ class TestConnectionErrors:
     @pytest.mark.asyncio
     async def test_authentication_failure(self):
         """Test handling of authentication failures."""
-        with patch('pymssql.connect') as mock_connect:
-            mock_connect.side_effect = pymssql.OperationalError("Login failed for user 'test'")
+        with patch('pyodbc.connect') as mock_connect:
+            mock_connect.side_effect = pyodbc.OperationalError("Login failed for user 'test'")
             
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
@@ -40,8 +40,8 @@ class TestConnectionErrors:
     @pytest.mark.asyncio
     async def test_database_not_found(self):
         """Test handling when database doesn't exist."""
-        with patch('pymssql.connect') as mock_connect:
-            mock_connect.side_effect = pymssql.OperationalError("Database 'nonexistent' does not exist")
+        with patch('pyodbc.connect') as mock_connect:
+            mock_connect.side_effect = pyodbc.OperationalError("Database 'nonexistent' does not exist")
             
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
@@ -59,9 +59,9 @@ class TestConnectionErrors:
         mock_conn.cursor.return_value = mock_cursor
         
         # Simulate network error during query execution
-        mock_cursor.execute.side_effect = pymssql.OperationalError("Network error")
+        mock_cursor.execute.side_effect = pyodbc.OperationalError("Network error")
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -85,9 +85,9 @@ class TestQueryErrors:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        mock_cursor.execute.side_effect = pymssql.ProgrammingError("Incorrect syntax near 'SELCT'")
+        mock_cursor.execute.side_effect = pyodbc.ProgrammingError("Incorrect syntax near 'SELCT'")
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -104,9 +104,9 @@ class TestQueryErrors:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        mock_cursor.execute.side_effect = pymssql.DatabaseError("The SELECT permission was denied")
+        mock_cursor.execute.side_effect = pyodbc.DatabaseError("The SELECT permission was denied")
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -122,9 +122,9 @@ class TestQueryErrors:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        mock_cursor.execute.side_effect = pymssql.OperationalError("Transaction was deadlocked")
+        mock_cursor.execute.side_effect = pyodbc.OperationalError("Transaction was deadlocked")
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -160,9 +160,9 @@ class TestResourceErrors:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        mock_cursor.execute.side_effect = pymssql.ProgrammingError("Invalid object name 'nonexistent'")
+        mock_cursor.execute.side_effect = pyodbc.ProgrammingError("Invalid object name 'nonexistent'")
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -185,7 +185,7 @@ class TestRecoveryScenarios:
             nonlocal attempt_count
             attempt_count += 1
             if attempt_count < 3:
-                raise pymssql.OperationalError("Connection failed")
+                raise pyodbc.OperationalError("Connection failed")
             # Success on third attempt
             mock_conn = Mock()
             mock_cursor = Mock()
@@ -193,7 +193,7 @@ class TestRecoveryScenarios:
             mock_conn.cursor.return_value = mock_cursor
             return mock_conn
         
-        with patch('pymssql.connect', side_effect=mock_connect):
+        with patch('pyodbc.connect', side_effect=mock_connect):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -219,13 +219,13 @@ class TestRecoveryScenarios:
         
         # Simulate cursor failing during iteration
         def failing_fetchall():
-            raise pymssql.OperationalError("Connection lost during query")
+            raise pyodbc.OperationalError("Connection lost during query")
         
         mock_cursor.execute.return_value = None
         mock_cursor.fetchall = failing_fetchall
         mock_cursor.description = [('id',), ('name',)]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -251,7 +251,7 @@ class TestRecoveryScenarios:
         mock_cursor.fetchall.return_value = [(1,)]
         mock_cursor.description = [('count',)]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -276,7 +276,7 @@ class TestMemoryAndResourceManagement:
         
         mock_cursor.execute.side_effect = Exception("Unexpected error")
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -298,7 +298,7 @@ class TestMemoryAndResourceManagement:
         # Make cursor creation fail after connection
         mock_conn.cursor.side_effect = Exception("Cursor creation failed")
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',

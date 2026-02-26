@@ -3,7 +3,7 @@
 
 import os
 import sys
-import pymssql
+import pyodbc
 
 # Add src to path to import our server module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -16,12 +16,21 @@ try:
     
     # Mask sensitive information for display
     display_config = config.copy()
-    if 'password' in display_config:
-        display_config['password'] = '***'
-    print(f"Configuration: {display_config}")
+    if 'conn_string' in display_config:
+        # Mask password in connection string
+        masked_conn_string = display_config['conn_string']
+        if 'PWD=' in masked_conn_string:
+            parts = masked_conn_string.split(';')
+            masked_parts = [p if not p.startswith('PWD=') else 'PWD=***' for p in parts]
+            masked_conn_string = ';'.join(masked_parts)
+        display_config['conn_string'] = masked_conn_string
+    print(f"Configuration:")
+    print(f"  Server: {config['server']}")
+    print(f"  Database: {config['database']}")
+    print(f"  User: {config['user']}")
     
     print("\nAttempting to connect to SQL Server...")
-    conn = pymssql.connect(**config)
+    conn = pyodbc.connect(config['conn_string'])
     cursor = conn.cursor()
     print("Connection successful!")
     

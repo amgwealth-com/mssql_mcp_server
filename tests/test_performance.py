@@ -24,7 +24,7 @@ class TestPerformance:
         mock_cursor.description = [('id',), ('name',)]
         mock_cursor.fetchall.return_value = [(i, f'user_{i}') for i in range(100)]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -49,7 +49,7 @@ class TestPerformance:
         mock_cursor.description = [('count',)]
         mock_cursor.fetchall.return_value = [(42,)]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -83,7 +83,7 @@ class TestPerformance:
         mock_cursor.description = [('id',), ('name',), ('email',), ('status',)]
         mock_cursor.fetchall.return_value = large_result
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -117,7 +117,7 @@ class TestMemoryUsage:
         
         mock_cursor.fetchall.return_value = [('table1',), ('table2',)]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -156,7 +156,7 @@ class TestMemoryUsage:
         mock_cursor.description = [('id',), ('data',)]
         mock_cursor.fetchall.return_value = list(generate_large_result())
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -186,7 +186,7 @@ class TestLoadHandling:
         mock_cursor.fetchall.return_value = [('result',)]
         mock_cursor.description = [('data',)]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -220,7 +220,7 @@ class TestLoadHandling:
         mock_cursor.fetchall.return_value = [('ok',)]
         mock_cursor.description = [('status',)]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -260,7 +260,7 @@ class TestScalability:
         # Test with different table counts
         table_counts = [10, 100, 1000]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -288,7 +288,7 @@ class TestScalability:
         mock_cursor = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',

@@ -30,7 +30,7 @@ async def test_call_tool_missing_query():
 @pytest.mark.asyncio
 @pytest.mark.skipif(
     not all([
-        pytest.importorskip("pymssql"),
+        pytest.importorskip("pyodbc"),
         pytest.importorskip("mssql_mcp_server")
     ]),
     reason="SQL Server connection not available"

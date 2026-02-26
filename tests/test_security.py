@@ -36,7 +36,7 @@ class TestSQLInjectionPrevention:
         mock_conn = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -69,7 +69,7 @@ class TestSQLInjectionPrevention:
         mock_conn = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -144,7 +144,7 @@ class TestResourceAccessControl:
             ('products',),
         ]
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
@@ -172,7 +172,7 @@ class TestResourceAccessControl:
         mock_conn = Mock()
         mock_conn.cursor.return_value = mock_cursor
         
-        with patch('pymssql.connect', return_value=mock_conn):
+        with patch('pyodbc.connect', return_value=mock_conn):
             with patch.dict('os.environ', {
                 'MSSQL_USER': 'test',
                 'MSSQL_PASSWORD': 'test',
