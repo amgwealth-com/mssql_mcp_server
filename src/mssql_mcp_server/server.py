@@ -278,19 +278,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         logger.error(f"Error executing SQL '{query}': {e}")
         return [TextContent(type="text", text=f"Error executing query: {str(e)}")]
 
-async def main():
-    """Main entry point to run the MCP server."""
+async def run_stdio():
+    """Run the MCP server using stdio transport."""
     from mcp.server.stdio import stdio_server
-    
-    logger.info("Starting MSSQL MCP server...")
-    config = get_db_config()
-    # Log connection info without exposing sensitive data
-    server_info = config['server']
-    if config.get('port') and config['port'] != "1433":
-        server_info += f":{config['port']}"
-    user_info = config.get('user', 'Windows Auth')
-    logger.info(f"Database config: {server_info}/{config['database']} as {user_info}")
-    
+
     async with stdio_server() as (read_stream, write_stream):
         try:
             await app.run(
@@ -301,6 +292,58 @@ async def main():
         except Exception as e:
             logger.error(f"Server error: {str(e)}", exc_info=True)
             raise
+
+
+async def run_http():
+    """Run the MCP server using SSE-based HTTP transport."""
+    from starlette.applications import Starlette
+    from starlette.routing import Mount, Route
+    from mcp.server.sse import SseServerTransport
+    import uvicorn
+
+    host = os.environ.get("MCP_HTTP_HOST", "0.0.0.0")
+    port = int(os.environ.get("MCP_HTTP_PORT", "8000"))
+
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await app.run(
+                streams[0], streams[1], app.create_initialization_options()
+            )
+
+    starlette_app = Starlette(
+        routes=[
+            Route("/sse", endpoint=handle_sse),
+            Mount("/messages/", app=sse.handle_post_message),
+        ]
+    )
+
+    logger.info(f"HTTP transport listening on {host}:{port}")
+    config = uvicorn.Config(starlette_app, host=host, port=port, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
+async def main():
+    """Main entry point to run the MCP server."""
+    transport = os.environ.get("MCP_TRANSPORT", "stdio").lower()
+
+    logger.info("Starting MSSQL MCP server...")
+    config = get_db_config()
+    # Log connection info without exposing sensitive data
+    server_info = config['server']
+    if config.get('port') and config['port'] != "1433":
+        server_info += f":{config['port']}"
+    user_info = config.get('user', 'Windows Auth')
+    logger.info(f"Database config: {server_info}/{config['database']} as {user_info}")
+
+    if transport == "http":
+        await run_http()
+    else:
+        await run_stdio()
 
 if __name__ == "__main__":
     asyncio.run(main())
