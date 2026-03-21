@@ -111,9 +111,6 @@ def get_db_config():
         "port": port
     }
 
-def get_command():
-    """Get the command to execute SQL queries."""
-    return os.getenv("MSSQL_COMMAND", "execute_sql")
 
 def is_select_query(query: str) -> bool:
     """
@@ -210,11 +207,10 @@ async def read_resource(uri: AnyUrl) -> str:
 @app.list_tools()
 async def list_tools() -> list[Tool]:
     """List available SQL Server tools."""
-    command = get_command()
     logger.info("Listing tools...")
     return [
         Tool(
-            name=command,
+            name="execute_sql",
             description="Execute an SQL query on the SQL Server",
             inputSchema={
                 "type": "object",
@@ -226,38 +222,77 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["query"]
             }
-        )
+        ),
+        Tool(
+            name="list_tables",
+            description="List all available tables in the SQL Server database",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        Tool(
+            name="read_table",
+            description="Read the first 100 rows from a table in the SQL Server database",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "The name of the table to read, optionally with schema (e.g. 'dbo.MyTable')"
+                    }
+                },
+                "required": ["table_name"]
+            }
+        ),
     ]
 
-@app.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    """Execute SQL commands."""
-    config = get_db_config()
-    command = get_command()
-    logger.info(f"Calling tool: {name} with arguments: {arguments}")
-    
-    if name != command:
-        raise ValueError(f"Unknown tool: {name}")
-    
-    query = arguments.get("query")
-    if not query:
-        raise ValueError("Query is required")
-    
+async def _tool_list_tables(conn_string: str) -> list[TextContent]:
     try:
-        conn = pyodbc.connect(config["conn_string"])
+        conn = pyodbc.connect(conn_string)
+        cursor = conn.cursor()
+        cursor.execute("SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME")
+        tables = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        result = ["SCHEMA,TABLE"] + [f"{row[0]},{row[1]}" for row in tables]
+        return [TextContent(type="text", text="\n".join(result))]
+    except Exception as e:
+        logger.error(f"Error listing tables: {e}")
+        return [TextContent(type="text", text=f"Error listing tables: {str(e)}")]
+
+
+async def _tool_read_table(conn_string: str, table_name: str) -> list[TextContent]:
+    try:
+        safe_table = validate_table_name(table_name)
+        conn = pyodbc.connect(conn_string)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT TOP 100 * FROM {safe_table}")
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        result = [",".join(columns)] + [",".join(map(str, row)) for row in rows]
+        return [TextContent(type="text", text="\n".join(result))]
+    except Exception as e:
+        logger.error(f"Error reading table {table_name}: {e}")
+        return [TextContent(type="text", text=f"Error reading table: {str(e)}")]
+
+
+async def _tool_execute_sql(conn_string: str, database: str, query: str) -> list[TextContent]:
+    try:
+        conn = pyodbc.connect(conn_string)
         cursor = conn.cursor()
         cursor.execute(query)
-        
-        # Special handling for table listing
+
         if is_select_query(query) and "INFORMATION_SCHEMA.TABLES" in query.upper():
             tables = cursor.fetchall()
-            result = ["Tables_in_" + config["database"]]  # Header
+            result = ["Tables_in_" + database]
             result.extend([table[0] for table in tables])
             cursor.close()
             conn.close()
             return [TextContent(type="text", text="\n".join(result))]
-        
-        # Regular SELECT queries
+
         elif is_select_query(query):
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
@@ -265,18 +300,40 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             cursor.close()
             conn.close()
             return [TextContent(type="text", text="\n".join([",".join(columns)] + result))]
-        
-        # Non-SELECT queries
+
         else:
             conn.commit()
             affected_rows = cursor.rowcount
             cursor.close()
             conn.close()
             return [TextContent(type="text", text=f"Query executed successfully. Rows affected: {affected_rows}")]
-                
+
     except Exception as e:
         logger.error(f"Error executing SQL '{query}': {e}")
         return [TextContent(type="text", text=f"Error executing query: {str(e)}")]
+
+
+@app.call_tool()
+async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    config = get_db_config()
+    logger.info(f"Calling tool: {name} with arguments: {arguments}")
+
+    if name == "list_tables":
+        return await _tool_list_tables(config["conn_string"])
+
+    if name == "read_table":
+        table_name = arguments.get("table_name")
+        if not table_name:
+            raise ValueError("table_name is required")
+        return await _tool_read_table(config["conn_string"], table_name)
+
+    if name == "execute_sql":
+        query = arguments.get("query")
+        if not query:
+            raise ValueError("query is required")
+        return await _tool_execute_sql(config["conn_string"], config["database"], query)
+
+    raise ValueError(f"Unknown tool: {name}")
 
 async def main():
     """Main entry point to run the MCP server."""
