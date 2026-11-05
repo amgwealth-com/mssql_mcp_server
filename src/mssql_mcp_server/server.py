@@ -112,30 +112,6 @@ def get_db_config():
     }
 
 
-def is_select_query(query: str) -> bool:
-    """
-    Check if a query is a SELECT statement, accounting for comments.
-    Handles both single-line (--) and multi-line (/* */) SQL comments.
-    """
-    # Remove multi-line comments /* ... */
-    query_cleaned = re.sub(r'/\*.*?\*/', '', query, flags=re.DOTALL)
-    
-    # Remove single-line comments -- ...
-    lines = query_cleaned.split('\n')
-    cleaned_lines = []
-    for line in lines:
-        # Find -- comment marker and remove everything after it
-        comment_pos = line.find('--')
-        if comment_pos != -1:
-            line = line[:comment_pos]
-        cleaned_lines.append(line)
-    
-    query_cleaned = '\n'.join(cleaned_lines)
-    
-    # Get the first non-empty word after stripping whitespace
-    first_word = query_cleaned.strip().split()[0] if query_cleaned.strip() else ""
-    return first_word.upper() == "SELECT"
-
 # Initialize server
 app = Server("mssql_mcp_server")
 
@@ -280,37 +256,51 @@ async def _tool_read_table(conn_string: str, table_name: str) -> list[TextConten
 
 
 async def _tool_execute_sql(conn_string: str, database: str, query: str) -> list[TextContent]:
+    conn = None
+    cursor = None
     try:
         conn = pyodbc.connect(conn_string)
         cursor = conn.cursor()
         cursor.execute(query)
 
-        if is_select_query(query) and "INFORMATION_SCHEMA.TABLES" in query.upper():
-            tables = cursor.fetchall()
-            result = ["Tables_in_" + database]
-            result.extend([table[0] for table in tables])
-            cursor.close()
-            conn.close()
-            return [TextContent(type="text", text="\n".join(result))]
+        results = []
+        affected_rows = -1
+        while True:
+            if cursor.description is not None:
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                lines = [",".join(columns)] + [",".join(map(str, row)) for row in rows]
+                results.append(TextContent(type="text", text="\n".join(lines)))
+            elif cursor.rowcount >= 0:
+                affected_rows = max(affected_rows, 0) + cursor.rowcount
 
-        elif is_select_query(query):
-            columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            result = [",".join(map(str, row)) for row in rows]
-            cursor.close()
-            conn.close()
-            return [TextContent(type="text", text="\n".join([",".join(columns)] + result))]
+            # SQL Server batches can emit row counts before/between results.
+            # Drain every result before committing, including OUTPUT results.
+            if not cursor.nextset():
+                break
 
-        else:
-            conn.commit()
-            affected_rows = cursor.rowcount
-            cursor.close()
-            conn.close()
-            return [TextContent(type="text", text=f"Query executed successfully. Rows affected: {affected_rows}")]
+        # Result sets can come from writes, so metadata must not decide commit.
+        # This completes this call's transaction, even for read-only queries.
+        conn.commit()
+        if results:
+            return results
+        return [TextContent(type="text", text=f"Query executed successfully. Rows affected: {affected_rows}")]
 
     except Exception as e:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                logger.warning("Failed to roll back SQL transaction", exc_info=True)
         logger.error(f"Error executing SQL '{query}': {e}")
         return [TextContent(type="text", text=f"Error executing query: {str(e)}")]
+    finally:
+        for resource in (cursor, conn):
+            if resource is not None:
+                try:
+                    resource.close()
+                except Exception:
+                    logger.warning("Failed to close SQL resource", exc_info=True)
 
 
 @app.call_tool()
